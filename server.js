@@ -1,0 +1,162 @@
+const express = require('express');
+const dotenv = require('dotenv');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+const connectDB = require('./config/db');
+
+const authRoutes = require('./routes/authRoutes');
+const itemRoutes = require('./routes/itemRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const billingRoutes = require('./routes/billingRoutes');
+const adminAuthRoutes = require('./routes/adminAuth');
+
+dotenv.config();
+
+connectDB();
+
+const app = express();
+const server = http.createServer(app);
+
+// Configure allowed origins for CORS
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    process.env.ADMIN_URL,
+    "http://localhost:5173",  // Local client
+    "http://localhost:5174",   // Local admin
+    "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "https://zink-zaika-client.vercel.app",
+    "https://zink-zaika-admin.vercel.app"
+].filter(Boolean); // Remove undefined values
+console.log("pasing......")
+const io = new Server(server, {
+    cors: {
+        origin: (origin, callback) => {
+            console.log('Socket Origin:', origin);
+            // Allow requests with no origin (like mobile apps, Postman, etc.)
+            if (!origin) return callback(null, true);
+
+            // Check if origin is in allowed list
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+
+            // Allow Vercel and Render deployments as fallback
+            if (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+                return callback(null, true);
+            }
+
+            // Block all other origins
+            callback(new Error('Not allowed by CORS'));
+        },
+        methods: ["GET", "POST", "PUT", "DELETE"],
+        credentials: true
+    }
+});
+
+// Middleware to attach io to req
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
+app.use(cors({
+    origin: (origin, callback) => {
+        console.log('Request Origin:', origin);
+        // Allow requests with no origin (like mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        // Normalize origin and check if it's localhost/127.0.0.1 on any port (for dev)
+        const isLocalhost = origin.startsWith('http://localhost:') ||
+            origin.startsWith('http://127.0.0.1:');
+
+        if (allowedOrigins.includes(origin) || isLocalhost) {
+            return callback(null, true);
+        }
+
+        // Allow Vercel and Render deployments as fallback
+        if (origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+            return callback(null, true);
+        }
+
+        // Block all other origins
+        console.error('CORS Blocked Origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"]
+}));
+app.use(express.json());
+
+const path = require('path');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/items', itemRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/coupons', require('./routes/couponRoutes'));
+app.use('/api/feedback', require('./routes/feedbackRoutes'));
+app.use('/api/categories', require('./routes/categoryRoutes'));
+app.use('/api/inventory', require('./routes/inventoryRoutes'));
+app.use('/api/admin', adminAuthRoutes);
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.get('/', (req, res) => {
+    res.send('API is running...');
+});
+
+// Socket.io connection handler
+io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
+
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
+
+const PORT = process.env.PORT || 5000;
+
+// Find the PID currently holding a TCP port so the developer can kill it.
+const findPidOnPort = (port) => {
+    try {
+        const { execSync } = require('child_process');
+        const cmd = process.platform === 'win32'
+            ? `netstat -ano -p TCP | findstr LISTENING | findstr :${port}`
+            : `lsof -ti tcp:${port}`;
+        const out = execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const line = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+        if (!line) return null;
+        const pid = process.platform === 'win32' ? line.split(/\s+/).pop() : line;
+        return /^\d+$/.test(pid) ? pid : null;
+    } catch {
+        return null;
+    }
+};
+
+if (require.main === module) {
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            const pid = findPidOnPort(PORT);
+            console.error(`\n[ERROR] Port ${PORT} is already in use${pid ? ` by process (PID) ${pid}` : ''}.`);
+            console.error('Another instance of the server is already running.\n');
+            console.error('please stop the existing server or use a different port.\n');
+            if (process.platform === 'win32') {
+                console.error(`Run:  taskkill /PID ${pid || '<PID>'} /F`);
+            } else {
+                console.error(`Run:  kill -9 ${pid || '<PID>'}`);
+            }
+            console.error('Or just use the server that is already running.\n');
+        } else {
+            console.error('[ERROR] Server failed to start:', err.message);
+        }
+        process.exit(1);
+    });
+
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;

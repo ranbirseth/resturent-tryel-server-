@@ -1,0 +1,55 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated files
+node_modules/
+coverage/
+.nyc_output/
+*.log
+logs/
+
+# Local uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+tmpclaude-*
+
+# Local database inspection and debug artifacts
+inspection_log.txt
+check_delivery_orders.js
+debug_counts.js
+inspect_db.js
+inspect_db_v2.js
+verify_analytics.js
+test.js
+seedMenu.js
+
+# Local editor workspace
+*.code-workspace
